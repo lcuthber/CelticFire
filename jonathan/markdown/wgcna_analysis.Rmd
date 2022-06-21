@@ -1,0 +1,587 @@
+---
+title: "WGCNA - Busselton and Celtic Fire - Paper figures"
+author: "Jonathan Ish-Horowicz"
+date: "02/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preamble
+
+Load packages
+
+```{r}
+# Import libraries
+set.seed(12345)
+
+library(WGCNA)
+disableWGCNAThreads()
+options(stringsAsFactors=FALSE)
+
+library(phyloseq)
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(tibble)
+library(matrixStats)
+library(psych)
+library(stringr)
+library(gplots)
+library(foreach)
+library(caret)
+library(dendextend)
+library(forcats)
+library(compositions)
+
+library(ggplot2)
+theme_set(theme_bw(base_size=16))
+library(ggpubr)
+library(ggrepel)
+library(ggforce)
+library(drlib)
+library(RColorBrewer)
+```
+
+Load data
+
+```{r}
+load("../data/Bus_CF_working_noduplicates.Rdata")
+Bus_CF1
+```
+
+Extract OTU tables at each site
+
+```{r}
+X <- list()
+X[["cf_lll"]] <- t(as.matrix(otu_table(subset_samples(Bus_CF1, SwabSite=="Brushing LLL 16S"))))
+X[["cf_lul"]] <- t(as.matrix(otu_table(subset_samples(Bus_CF1, SwabSite=="Brushing LUL 16S"))))
+X[["cf_ots"]] <- t(as.matrix(otu_table(subset_samples(Bus_CF1, SwabSite=="OTS"))))
+X[["bus_ots"]] <- t(as.matrix(otu_table(subset_samples(Bus_CF1, SwabSite=="Throat"))))
+lapply(X, dim)
+```
+
+Load the taxonomy
+
+```{r}
+taxonomy_df <- as.data.frame(phyloseq::tax_table(Bus_CF1)) %>%
+  dplyr::rename(OTU=OTUID)
+```
+
+# WGCNA
+
+## Preprocessing
+
+### OTU filtering
+
+Check which OTUs with zero-variance (they also have zero prevalence)
+
+```{r}
+zero_variance_otus <- lapply(X, function(x) colnames(x)[colVars(x)==0])
+print(sapply(zero_variance_otus, length))
+zero_variance_otus <- unique(do.call(c, zero_variance_otus))
+cat(sprintf("%d OTUs have zero-variance in at least one subset\n", length(zero_variance_otus)))
+# X <- lapply(X, function(x) x[,!colnames(x) %in% zero_variance_otus])
+# lapply(X, dim)
+```
+Remove these OTUs from the OTU tables.
+
+```{r}
+PREV_THRESH <- 20.0
+prevalence_by_site <- lapply(
+  X,
+  function(x) apply(x, 2, function(xx) 100.0*sum(xx!=0)/length(xx)) %>%
+    as.data.frame() %>%
+    rownames_to_column("OTU") %>%
+    dplyr::rename(prevalence=".")) %>%
+  rbindlist(idcol="site")
+
+included_OTUs <- unique(prevalence_by_site$OTU[prevalence_by_site$prevalence>=20])
+cat(sprintf("%d OTUs are above the prevalence threshold of %.1f%%\n", length(included_OTUs), PREV_THRESH))
+
+# subset OTUs
+X <- lapply(X, function(x) x[,colnames(x) %in% included_OTUs])
+X <- lapply(X, function(x) x %>% as.data.frame() %>% as.matrix())
+X <- lapply(X, function(x) x[,colVars(x)>0])
+lapply(X, dim)
+```
+
+## Network Construction
+
+### Adjacency network
+
+Using Spearman correlation.
+
+```{r}
+powerVector <- 1:15
+RsquaredCut <- 0.85
+NETWORK_TYPE <- "unsigned"
+corOptions <- list(method="spearman")
+
+beta_choice_out <- lapply(
+    X,
+    function(x) pickSoftThreshold(x,
+                                  RsquaredCut=RsquaredCut, 
+                                  corFnc=cor,
+                                  corOptions=corOptions,
+                                  powerVector=powerVector,
+                                  removeFirst=FALSE,
+                                  blockSize=NULL,
+                                  networkType=NETWORK_TYPE,
+                                  moreNetworkConcepts=FALSE, 
+                                  verbose=0, indent=0)
+  )
+beta <- sapply(beta_choice_out, function(x) x$powerEstimate)
+beta
+```
+
+A nicer looking plot
+
+```{r}
+fitIndices <- rbindlist(lapply(beta_choice_out, function(x) x$fitIndices), idcol="site")
+
+tmpdf <- data.frame(y=c(RsquaredCut, NA), name=c("Signed R^2", "Mean connectivity"))
+tmpdf$name <- factor(tmpdf$name, levels=c("Signed R^2", "Mean connectivity"))
+  
+fitIndices %>%
+  mutate(signed_Rsq=-sign(slope)*SFT.R.sq) %>%
+  select(site, Power, signed_Rsq, mean.k.) %>%
+  pivot_longer(c(signed_Rsq, mean.k.)) %>%
+  mutate(name=recode(name, mean.k.="Mean connectivity", signed_Rsq="Signed R^2")) %>%
+  filter(name=="Signed R^2") %>%
+  mutate(name=factor(name, levels=c("Signed R^2", "Mean connectivity"))) %>%
+  ggplot(aes(x=Power, y=value, colour=site)) +
+  # facet_wrap(~site) +
+  geom_line() + geom_point() +
+  theme(text=element_text(size=20), legend.position="top", legend.title=element_blank()) +
+  geom_hline(yintercept=RsquaredCut, colour="red") +
+  ylab("Signed R^2") + xlab("Soft power")
+
+fitIndices %>%
+  mutate(signed_Rsq=-sign(slope)*SFT.R.sq) %>%
+  select(site, Power, signed_Rsq, mean.k.) %>%
+  pivot_longer(c(signed_Rsq, mean.k.)) %>%
+  mutate(name=recode(name, mean.k.="Mean connectivity", signed_Rsq="Signed R^2")) %>%
+  filter(name!="Signed R^2") %>%
+  mutate(name=factor(name, levels=c("Signed R^2", "Mean connectivity"))) %>%
+  ggplot(aes(x=Power, y=value, colour=site)) +
+  geom_line() + geom_point() +
+  theme(text=element_text(size=20), legend.position="top", legend.title=element_blank()) +
+  ylab("Mean connectivity") + xlab("Soft power")
+```
+
+### Adjacency and TOM
+
+Calculate adjancency and TOM
+
+```{r}
+X_logtrans <- lapply(X, log1p)
+stopifnot(all(sapply(X_logtrans, function(x) sum(is.na(x))==0)))
+
+# adjacency calculation
+adj <- lapply(names(X),
+              function(x) adjacency(X[[x]], type=NETWORK_TYPE, power=beta[[x]], corOptions=corOptions))
+names(adj) <- names(X)
+
+# TOM similarity
+TOM <- lapply(adj, function(x) TOMsimilarity(x, TOMType=NETWORK_TYPE, verbose=0))
+for(site in names(TOM)) {
+  colnames(TOM[[site]]) <- colnames(X[[site]])
+  rownames(TOM[[site]]) <- colnames(X[[site]]) 
+}
+
+# TOM dissimilarity
+dTOM <- lapply(TOM, function(tom) 1.0 - tom)
+
+TOM %>%
+  saveRDS(file="../results/wgcna/tom_matrices.rds")
+```
+
+### Module detection
+
+```{r}
+minClusterSize  <- 10
+
+otu_trees <- lapply(dTOM, function(dtom) hclust(as.dist(dtom), method="average"))
+
+premerge_modules <- lapply(names(otu_trees),
+                  function(site) cutreeDynamic(dendro=otu_trees[[site]],
+                                               distM=dTOM[[site]],
+                                               deepSplit=2, pamRespectsDendro=FALSE,
+                                               minClusterSize=minClusterSize)
+)
+names(premerge_modules) <- names(otu_trees)
+premerge_colours <- lapply(premerge_modules, labels2colors)
+```
+
+Merge similar modules
+
+```{r}
+MEDissThres <- 0.35
+
+module_eigengene_out <- lapply(names(premerge_colours),
+                               function(x) moduleEigengenes(X_logtrans[[x]],
+                                                               colors=premerge_colours[[x]])
+)
+names(module_eigengene_out) <- names(premerge_colours)
+module_eigengenes <- lapply(module_eigengene_out, function(x) x$eigengenes)
+
+module_eigengne_trees <- lapply(module_eigengenes, function(me) hclust(as.dist(1-cor(me)), method="average"))
+
+for(label in names(module_eigengne_trees)) {
+  plot(module_eigengne_trees[[label]], main=label, xlab="", sub="")
+    abline(h=MEDissThres, col="red")
+}
+```
+
+
+Do the merging:
+
+```{r}
+merge_out <- lapply(names(premerge_colours),
+                    function(x) mergeCloseModules(X_logtrans[[x]],
+                                                  premerge_colours[[x]],
+                                                  cutHeight=MEDissThres)
+)
+names(merge_out) <- names(premerge_colours)
+mergedColors <- lapply(merge_out, function(x) x$colors)
+mergedMEs <- lapply(merge_out, function(x) x$newMEs)
+```
+
+Plot the modules before and after the merge
+
+```{r}
+for(site in names(otu_trees)) {
+  png(sprintf("../plots/wgcna/module_dendrograms_%s.png", site), height=1000, width=2000, res=300)
+  plotDendroAndColors(otu_trees[[site]],
+                        cbind(premerge_colours[[site]], mergedColors[[site]]),
+                        c("Dynamic Tree Cut", "Merged dynamic"),
+                        dendroLabels = FALSE, hang = 0.03,
+                        addGuide = TRUE, guideHang = 0.05,
+                        main=site,
+                        )
+  dev.off()
+}
+  
+```
+
+# Module membership
+
+```{r}
+calc.mod.mem <- function(dat, eig.genes, alpha=0.05, ...) {
+  
+  # computes module membership (correlation between log-transformed)
+  # OTU counts and module eigengenes. Also returns corresponding p-value
+  
+  out <- corr.test(
+    dat, eig.genes,
+    alpha=alpha, method="pearson", adjust="none", minlength=100,
+    ...
+  )
+  
+  corr.vals <- as.data.frame(out$r)
+  p.vals <- as.data.frame(out$p)
+  ci <- as.data.frame(out$ci)
+  
+  corr.vals <- as.data.frame(out$r) %>%
+    rownames_to_column("OTU") %>%
+    pivot_longer(cols=-OTU, names_to="module", values_to="correlation")
+  
+  p.vals <- as.data.frame(out$p) %>%
+    rownames_to_column("OTU") %>%
+    pivot_longer(cols=-OTU, names_to="module", values_to="pvalue")
+  
+  df <- full_join(corr.vals, p.vals, by=c("OTU", "module"))
+  return(df)
+}
+
+module_membership <- lapply(names(mergedMEs),
+                            function(x) calc.mod.mem(X_logtrans[[x]], mergedMEs[[x]]))
+names(module_membership) <- names(mergedMEs)
+
+combined_mm <- rbindlist(module_membership, idcol="label") %>%
+  mutate(qvalue=p.adjust(pvalue, method="fdr"))
+
+module_membership %>%
+  saveRDS(file="../results/wgcna/module_membership.rds")
+```
+
+<!-- Write to csv files in wide format -->
+
+<!-- ```{r} -->
+<!-- for(label_ in names(module_membership)) { -->
+
+<!--   long_df <- combined_mm %>% -->
+<!--     filter(label==label_) %>% -->
+<!--     select(-label) -->
+<!--   module_names <- unique(long_df$module) -->
+<!--   column_order <- apply( -->
+<!--     expand.grid(c("correlation_", "pvalue_", "qvalue_"), module_names), -->
+<!--     1, -->
+<!--     function(x) sprintf("%s%s", x[[1]], x[[2]])) -->
+<!--   column_order <- c("OTU", column_order) -->
+
+<!--   wide_df <- long_df %>% -->
+<!--     pivot_wider(names_from=module, values_from=c(correlation, pvalue, qvalue)) %>% -->
+<!--     select(all_of(column_order)) %>% -->
+<!--     fwrite(file=sprintf("../csv/module_membership_%s.csv", label_), sep=",") -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- Save X as rds file -->
+
+<!-- ```{r} -->
+<!-- saveRDS(X, file="../saved_results/X_wgcna.rds") -->
+<!-- ``` -->
+
+# Module assignments
+
+```{r}
+module_assignments <- lapply(setNames(names(mergedColors), names(mergedColors)),
+       function(x) data.frame(OTU=colnames(X[[x]]),
+                                              module=mergedColors[[x]]))
+
+module_assignments_long <-  module_assignments %>%
+  rbindlist(idcol="label")
+  
+module_assignments_wide <- module_assignments_long %>%
+  pivot_wider(names_from=label, values_from=module) 
+
+module_assignments %>%
+  saveRDS(file="../results/wgcna/module_assignments.rds")
+```
+
+# Hub OTUs
+
+```{r}
+# for merged modules
+hub_otus <- lapply(
+  names(mergedColors),
+  function(x) chooseTopHubInEachModule(
+    X_logtrans[[x]], mergedColors[[x]], power=beta[[x]], type=NETWORK_TYPE
+  )
+)
+names(hub_otus) <- names(mergedColors)
+
+hub_otu_labels <- lapply(hub_otus,
+       function(x) setNames(c(paste0(names(x), " (", gsub('_[^_]*$', '', x), ")"), "grey"),
+                            c(names(x), "grey"))) 
+saveRDS(hub_otu_labels, file="../results/wgcna/hub_otu_labels.rds")
+
+module_name_tbl <- lapply(hub_otu_labels,
+                          function(x) x %>% as.data.frame %>% rownames_to_column("module")) %>%
+  rbindlist(idcol="site") %>%
+  rename(module_longname=".")
+
+module_name_tbl %>%
+  fwrite("../results/wgcna/wgcna_module_names.csv")
+```
+
+# Association with traits
+
+Test for associations between module eigenvectors and traits.
+
+```{r}
+module_eigenvectors <- mergedMEs
+module_eigenvectors %>%
+  saveRDS("../results/wgcna/module_eigenvectors.rds")
+```
+
+Utility function definitions - calculate associations between module eigenvectors for a continuous (correlation) or discrete (Kruskal-Wallis) trait.
+
+```{r}
+library(effectsize)
+library(broom)
+library(corrr)
+
+cor_student_test <- function(MEs, traits) {
+  stopifnot(nrow(MEs)==nrow(traits))
+  corrvals <- cor(MEs, traits, use="p")
+  pvals <- corPvalueStudent(corrvals, nrow(MEs))
+  
+  out <- corrvals %>%
+    as.data.frame() %>%
+    rownames_to_column("module") %>%
+    pivot_longer(-module, values_to="corr", names_to="trait") %>%
+    inner_join(
+      pvals %>%
+        as.data.frame() %>%
+        rownames_to_column("module") %>%
+        pivot_longer(-module, values_to="p", names_to="trait"),
+      by=c("module", "trait")
+    )
+  
+  return(out)
+}
+
+rowwise_kw_test <- function(MEs, traits) {
+  stopifnot(nrow(MEs)==nrow(traits))
+  n_MEs <- ncol(MEs)
+  n_traits <- ncol(traits)
+  
+  # p-values from KW test
+  p_values <- matrix(NA, nrow=n_MEs, ncol=n_traits)
+  for(i in 1:n_MEs) {
+    for(j in 1:n_traits) {
+      p_values[i,j] <- kruskal.test(MEs[,i], traits[,j])$p.value
+    }
+  }
+  rownames(p_values) <- colnames(MEs)
+  colnames(p_values) <- colnames(traits)
+  
+  # rank epsilon squared effect size
+  eps_sq <- data.frame()
+  for(i in 1:n_MEs) {
+    for(j in 1:n_traits) {
+      eps_sq <- rbind(
+        eps_sq,
+        data.frame(
+          rank_epsilon_squared(MEs[,i], traits[,j]) %>% as.data.frame(),
+          module=colnames(MEs)[[i]],
+          trait=colnames(traits)[[j]]
+        )
+      )
+    }
+  }
+  
+  # combine into single dataframe
+  out <- p_values %>%
+    as.data.frame() %>%
+    rownames_to_column("module") %>%
+    pivot_longer(-module, values_to="p", names_to="trait") %>%
+    inner_join(
+      eps_sq,
+      by=c("module", "trait")
+    )
+  return(out)
+}
+```
+
+Read formatted metadata - produced using `markdown/metadata_formatting.Rmd`
+
+```{r}
+metadata <- fread("../data/metadata/formatted_metadata.csv") %>%
+  as.data.frame()
+```
+
+Check which samples we have
+
+```{r}
+for(site in names(X)) {
+  cat(site, ":\n")
+  samples_with_metadata <- rownames(X[[site]])[rownames(X[[site]]) %in% metadata$SampleID]
+  cat(length(samples_with_metadata), "of", nrow(X[[site]]), "samples in metadata\n")
+}
+```
+
+Count the number of non-NA samples for each trait at each site.
+
+TODO: check how GERD and diabetes patients are handled
+
+```{r}
+discrete_phenotype_names <- c("Asthma", "Smoking", "Sex", "Severity")
+continuous_phenotype_names <- c("BMI", "SmokingQuit", "Age", "WCC", "pc_Neutrophils", "pc_Eosinophils")
+
+y_discrete <- metadata[,discrete_phenotype_names] %>% as.matrix()
+y_continuous <- metadata[,continuous_phenotype_names] %>% as.matrix()
+
+rownames(y_continuous) <- metadata$SampleID
+rownames(y_discrete) <- metadata$SampleID
+
+frac_valid_samples <- list()
+
+for(label in names(module_eigenvectors)) {
+  cat(label, "\n")
+
+  # continous trait
+  id <- paste0("continuous.", label)
+  included_ids <- intersect(rownames(module_eigenvectors[[label]]),
+                            rownames(y_continuous))
+
+  frac_valid_samples[[id]] <- apply(y_continuous[included_ids,],
+                                 2,
+                                 function(x) sum(!is.na(x))/length(x))
+  
+  # discrete traits
+  id <- paste0("discrete.", label)
+  included_ids <- intersect(rownames(module_eigenvectors[[label]]),
+                            rownames(y_discrete))
+  frac_valid_samples[[id]] <- apply(y_discrete[included_ids,],
+                                 2,
+                                 function(x) sum(!is.na(x))/length(x))
+}
+
+frac_valid_samples
+```
+
+Don't associate SmokingQuit with cf.lll samples - only 10/111 samples are not NA.
+
+Calculate the associations.
+
+```{r}
+module_trait_assocs <- list()
+
+for(label in names(module_eigenvectors)) {
+  cat(label, "\n")
+  site <- label
+
+  #
+  # calculate associations
+  
+  # continuous traits
+  id <- paste0("continuous.", label)
+  included_ids <- intersect(rownames(module_eigenvectors[[label]]),
+                            rownames(y_continuous))
+  
+  if(length(included_ids)!=nrow(module_eigenvectors[[label]]))
+    warning(sprintf("Missing &d continuous samples for &s\n", nrow(module_eigenvectors)-length(included_ids), label))
+  
+  included_traits <- n_valid_samples[[paste0("continuous.", label)]]
+  included_traits <- names(included_traits)[included_traits>0.5]
+
+  module_trait_assocs[[id]] <- cor_student_test(module_eigenvectors[[label]][included_ids,],
+                                                y_continuous[included_ids,included_traits])
+  
+  # discrete traits
+  id <- paste0("discrete.", label)
+  included_ids <- intersect(rownames(module_eigenvectors[[label]]),
+                            rownames(y_discrete))
+  if(length(included_ids)!=nrow(module_eigenvectors[[label]]))
+    warning(sprintf("Missing &d discrete samples for &s\n", nrow(module_eigenvectors)-length(included_ids), label))
+  
+  included_traits <- n_valid_samples[[paste0("discrete.", label)]]
+  included_traits <- names(included_traits)[included_traits>0.5]
+
+  module_trait_assocs[[id]] <- rowwise_kw_test(module_eigenvectors[[label]][included_ids,],
+                                               y_discrete[included_ids,included_traits])
+}
+```
+Do the multiple testing correction (FDR)
+
+```{r}
+q_values <- lapply(module_trait_assocs, function(x) x %>% select(module, trait, p)) %>%
+  rbindlist(idcol="label") %>%
+  mutate(q=p.adjust(p, method="fdr")) %>%
+  arrange(q)
+
+module_trait_assocs_corrected <- list()
+for(label_ in names(module_trait_assocs)) {
+  module_trait_assocs_corrected[[ label_ ]] <- module_trait_assocs[[ label_ ]] %>%
+    inner_join(
+      q_values %>%
+        filter(label==label_) %>%
+        select(-label),
+      by=c("module", "trait", "p")
+    )
+  
+}
+```
+
+Save the results
+
+```{r}
+saveRDS(module_trait_assocs_corrected, "../results/wgcna/module_trait_assocs.rds")
+```

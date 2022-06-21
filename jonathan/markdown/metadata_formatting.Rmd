@@ -1,0 +1,53 @@
+---
+title: "CF-Busselton Metadata Formatting"
+author: "Jonathan Ish-Horowicz"
+date: "10/06/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(stringr)
+```
+
+# Load metadata and format as csv file
+
+```{r}
+metadata <- read_xlsx("../data/metadata/Combined Celtic Fire and Busselton16S samples metadata for microbiome analyses correct.xlsx") %>%
+  select(`#SampleID`, Study_ID, `Sample Type coded`, Site, `Sex coded`, `Ethnicity coded`, Age,
+         Final_16S_copies_per_ul, Final_16S_copies_per_sample, `Diagnosis coded`,
+         `Severity coded`, WCC, `% Neutrophils`, `% Eosinophils`, Smoking,
+         `SmokingQuit`, BMI) %>%
+  rename(SampleID=`#SampleID`,
+         SampleSite=`Sample Type coded`,
+         Sex=`Sex coded`,
+         Study=Site,
+         Ethnicity=`Ethnicity coded`,
+         Asthma=`Diagnosis coded`,
+         Severity=`Severity coded`,
+         pc_Neutrophils=`% Neutrophils`,
+         pc_Eosinophils=`% Eosinophils`) %>%
+  mutate(#SampleID=str_pad(SampleID, 6, pad="0"),
+         Study_ID=as.integer(Study_ID),
+         Smoking=recode(Smoking, No=0, Yes=1),
+         SmokingQuit=as.numeric(SmokingQuit),
+         WCC=as.numeric(WCC),
+         BMI=as.numeric(BMI),
+         pc_Neutrophils=as.numeric(pc_Neutrophils),
+         pc_Eosinophils=as.numeric(pc_Eosinophils),
+         Asthma=as.integer(Asthma),
+         Smoking=as.integer(Smoking),
+         Severity=as.integer(Severity),
+         SampleSite=as.integer(SampleSite),
+         Sex=as.integer(Sex)) %>%
+  mutate(Severity=na_if(Severity, 3))
+
+fwrite(metadata, "../data/metadata/formatted_metadata.csv")
+```
