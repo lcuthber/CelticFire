@@ -1,1 +1,3 @@
 data/kegg/ko_lookup_raw.rds
+tmp/
+run/open_rstudio.sh
