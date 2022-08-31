@@ -67,7 +67,7 @@ lapply(X, dim)
 Load the taxonomy
 
 ```{r}
-taxonomy_df <- as.data.frame(phyloseq::tax_table(Bus_CF1)) %>%
+taxonomy_df <- as.data.frame(phyloseq::tax_table(Bus_CF1)@.Data) %>%
   dplyr::rename(OTU=OTUID)
 ```
 
@@ -107,6 +107,8 @@ X <- lapply(X, function(x) x[,colnames(x) %in% included_OTUs])
 X <- lapply(X, function(x) x %>% as.data.frame() %>% as.matrix())
 X <- lapply(X, function(x) x[,colVars(x)>0])
 lapply(X, dim)
+
+saveRDS(X, "../data/wgcna/otu_tables_wgcna.rds")
 ```
 
 ## Network Construction
@@ -206,6 +208,8 @@ TOM %>%
 minClusterSize  <- 10
 
 otu_trees <- lapply(dTOM, function(dtom) hclust(as.dist(dtom), method="average"))
+otu_trees %>%
+  saveRDS(file="../results/wgcna/otu_trees.rds")
 
 premerge_modules <- lapply(names(otu_trees),
                   function(site) cutreeDynamic(dendro=otu_trees[[site]],

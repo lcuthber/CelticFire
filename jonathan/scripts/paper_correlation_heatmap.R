@@ -433,10 +433,6 @@ isolate_otu_identity_heatmap
 
 
 
-# placeholder_gg <- data.frame(x=runif(10), y=runif(10)) %>%
-#   ggplot(aes(x=x, y=y)) +
-#     geom_point() +
-#   theme_bw()
 
 hm_grob <- grid::grid.grabExpr(draw(hm, merge_legend=TRUE))
 
@@ -548,49 +544,6 @@ plt4 <- otu_summary_all_sites %>%
   guides(color=guide_legend(override.aes=list(size=5)))
 plt4
 
-
-# #
-# # Strep module membership - now in Supplementals
-# wgcna_modules %>%
-#   bind_rows(.id="site") %>%
-#   # right_join(
-#   #   tibble(
-#   #     site=c(rep("cf_ots", 3), rep("bus_ots", 2)),
-#   #     module=c("blue", "greenyellow", "red", "blue", "yellow")
-#   #   ),
-#   #   by=c("site", "module")
-#   # ) %>%
-#   as_tibble() %>%
-#   right_join(
-#     otu_isolate_map %>%
-#       filter(percentage_identity>=99),
-#     by="OTU") %>%
-#   left_join(cluster_tbl, by="isolate") %>%
-#   filter(grepl("Strep", cluster_longname), grepl("ots", site)) %>%
-#   group_by(site) %>%
-#   do(tbl=table(.$module, .$cluster_longname) %>% as.data.frame()) %>%
-#   unnest(tbl) %>%
-#   mutate(site=recode(site, bus_ots="BUS ptOP", cf_ots="CELF ptOP"),
-#          Var1=recode(Var1, greenyellow="green\nyellow"),
-#          Var1=forcats::fct_relevel(Var1, c("blue", "yellow", "green\nyellow", "red"), after=0)) %>%
-#   ggplot(aes(x=Var1, y=Var2, fill=Freq)) +
-#   geom_tile() +
-#   geom_label(aes(label=Freq)) +
-#   scale_fill_gradient(low="white", high="red") +
-#   xlab("WGCNA module") +
-#   ylab("Isolate cluster") +
-#   theme_minimal() +
-#   theme(
-#     axis.text=element_text(size=14),
-#     axis.title=element_text(size=16),
-#     strip.text.x=element_text(size=20),
-#     legend.text=element_text(size=14),
-#     legend.title=element_text(size=14),
-#     panel.border=element_rect(fill=NA)
-#   ) +
-#   ggforce::facet_row(~site, scales="free_x", space="free") +
-#   labs(fill="# OTUs")
-# cropped_ggsave("../plots/composite_figures/strep_wgcna_isolate_comp.pdf")
 
 #
 # comparing Strep KO scores
