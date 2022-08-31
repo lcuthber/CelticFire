@@ -42,6 +42,7 @@ rownames(AAm.2) <- rownames(AAmfilt)
 Variables_99 <- as.data.frame(colnames(AAmfilt))
 names(Variables_99)[]<- 'BIOCHEMICAL'
 Variables_99_info <- merge(Variables_99, annotm, on = 'BIOCHEMICAL')
+Am_Kegg_Hmdb <- data.frame(Variables_99_info$BIOCHEMICAL, Variables_99_info$KEGG, Variables_99_info$`Group   HMDB_ID`)
 
 AAmnormscale <- apply(AAm.2, 2, function(x) scale(as.data.frame(x), center = 1, scale = median(x)))
 AAm.3 <- AAmnormscale
