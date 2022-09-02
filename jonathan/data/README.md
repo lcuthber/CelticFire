@@ -1,4 +1,5 @@
-```├── data
+```
+├── data
 │   ├── Bus_CF_working_noduplicates.Rdata
 │   ├── isolate_names
 │   │   ├── filtered_OTU_isolate.txt
