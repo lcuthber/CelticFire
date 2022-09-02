@@ -13,13 +13,8 @@
 │   │   │   └── parsed_pathway_info.csv                         # KO pathway categories
 │   │   ├── formatted_ko_lookup.tsv                             # KO descriptions
 │   │   ├── kegg_pathway_categories.csv                         # KO pathways listed according to category
-│   │   ├── ko_annotations
-│   │   │   ├── emapper_outputs                                 # eggnog-mapper output for 126 isolates
-│   │   │   │   ├── new_haemophilus_isolates                    # eggnog-mapper output for 8 additional Haemophilus isolates (to remove)
-│   │   │   └── reference_files                                 # previous versions of files for unit testing
-│   │   │       ├── emapper_all_binary.tsv
-│   │   │       └── emapper_all.tsv
-│   │   └── ko_lookup_raw.rds                                   # KO database query for all 5,531 KOs
+│   │   └── ko_annotations
+│   │       └── emapper_outputs                                 # eggnog-mapper output for 126 isolates
 │   ├── metadata
 │   │   ├── Combined Celtic Fire and[...].xlsx                  # Metadata prepared by Miriam
 │   │   └── formatted_metadata.csv                              # metadata formatted for WGNCA analysis
@@ -30,12 +25,9 @@
 │   └── wgcna_analysis.Rmd                                      # runs WGCNA analysis
 ├── results	
 │   ├── kegg
-│   │   ├── cluster_ko_odds_ratios.rds                          # odds ratio scores for each KO-isolate cluster pair (raw)
 │   │   ├── final_KO_cluster_scores.tsv                         # odds ratio scores for each KO-isolate cluster pair (formatted)
 │   │   ├── isolate_cluster_labels.csv                          # cluster assigments for isolates
-│   │   ├── isolate_cluster_labels.rds                          # cluster assigments for isolates
-│   │   ├── isolate_phylogenetic_hclust.rds                     # dendrogram for isolate clustering using KO distance matrix
-│   │   └── supplementary_table_2.xlsx                          # odds ratio scores for each KO-isolate cluster pair (manuscript version)
+│   │   └── isolate_phylogenetic_hclust.rds                     # dendrogram for isolate clustering using KO distance matrix
 │   └── wgcna
 │       ├── hub_otu_labels.rds                                  # hub OTUs for each WGCNA module
 │       ├── module_assignments.rds                              # WGCNA module assignments
@@ -55,6 +47,5 @@
     ├── parse_kegg_info.R                                       # parse raw KO lookups
     ├── plot_utils.R                                            # plot saving function
     ├── supplementary_figures.R                                 # Figure S3a, S3b
-    ├── wgcna_module_composition.R                              # makes tables of WGNCA module composition - Tables not currently in manuscript
-    └── wgcna_module_isolate_cluster_betareg.R                  # not currently in manuscript - to remove
+    └── wgcna_module_composition.R                              # makes tables of WGNCA module composition - Tables not currently in manuscript
 ```
