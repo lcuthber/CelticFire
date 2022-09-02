@@ -1,15 +1,15 @@
 ```
 ├── data
-│   ├── annot_media.csv
-│   ├── ExpressionData_Filt_2553genes_MO.csv
-│   ├── KOabundance_ipath3input.csv
-│   ├── KO_ALImetabolite_linkage.csv
-│   ├── KO_iso_abund.csv
-│   ├── Metabolon_NormScaled_Media_dat.csv
-│   └── raw_media.csv
+│   ├── annot_media.csv                           - Metabolite annotation data
+│   ├── ExpressionData_Filt_2553genes_MO.csv      - Data corresponding to Fig. 4a
+│   ├── KOabundance_ipath3input.csv               - Data corresponding to S.Fig. 4a and 4b
+│   ├── KO_ALImetabolite_linkage.csv              - Data corresponding to Fig. 4b
+│   ├── KO_iso_abund.csv                          - Data corresponding to Fig. 4c
+│   ├── Metabolon_NormScaled_Media_dat.csv        - Processed metabolite intensities from ALI culture media
+│   └── raw_media.csv                             - Raw metabolite intensities from ALI culture media
 └── scripts
-    ├── ALImedia_metabolite_preproc
-    ├── EggnogAnnot_KO_datproc
-    ├── KO_isolate_heatmap
-    └── KO_metabolite_linkage
+    ├── ALImedia_metabolite_preproc.R             - Preprocessing of raw ALI media metabolite data to normalised, filtered and scaled data
+    ├── EggnogAnnot_KO_datproc.R                  - Extract KOs from Eggnog annotations for bacterial isolates
+    ├── KO_isolate_heatmap.R                      - Script corresponding to Fig. 4c
+    └── KO_metabolite_linkage.R                   - Script corresponding to Fig. 4b
 ```
