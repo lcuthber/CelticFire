@@ -1,0 +1,996 @@
+---
+title: "Busselton and Celtic Fire preprocessing"
+author: "Leah Cuthbertson"
+date: "13/05/2020"
+output: pdf_document
+---
+#Introduction
+This script outlines the preprocessing of the data for Bussleton and Celtic Fire after being processed through QIIME2 by Colin Churchward. 
+
+All data will first be loaded into R. Studies included in the analysis include; Bussleton, Celtic Fire and BEAM studies. Celtic Fire data includes, throat swabs and lung brushes. The data from the BEAM study are not included in this publication but are included in processing for completeness as they were processed at the same time. 
+
+###The Busselton cohort.  
+* Busselton samples were ordered by their qPCR values, and sequenced over 7 different runs. Unfortunately, this has caused a significant batch effect, which may effect further analysis.  
+* DNA was extracted using the MPBio DNA extarction kit for soil
+* There were no kit controls included during the extraction, therefore there are no samples that could identify the contaminant OTUs
+*qPCR was carried out on all samples
+
+###The Celtic Fire (CF) and BEAM cohort. 
+*Samples were randomised and extracted with throat swabs and lung brushes combined. CF, BEAM, Connor and Orla samples were randomised together - these samples were pre-processed and then extra samples were removed from further analysis. 
+*Samples were extracted using CTAB phenol chloroform extraction
+*PCR controls,  Extraction controls, scope washes were included in the sequencing runs 
+*qPCR was carried out on all samples
+
+This next section details how the data is processed before any of the statistical analysis is carried out. 
+
+\pagebreak
+#Load data into R
+Load all the relavent packages that might be used in the analysis of the data
+```{r Load Packages, eval=FALSE, tidy.opts=list(width.cutoff=60)}
+library(phyloseq)
+library(ggplot2)
+library(stringr)
+library(decontam)
+library(dplyr)
+```
+
+Import Data Into Phyloseq
+Data was processed in QIIME2. BIOM file, treefile and representative seqs are loaded into R. 
+Metadata is loaded into a mapping file was loaded and attached to the phyloseq object. 
+
+```{r Load Data, eval=FALSE, tidy.opts=list(width.cutoff=60)}
+setwd("CF_Buss/")
+#Import all raw data
+all_data = import_biom(BIOMfilename = "otu_table_json.biom", 
+                       treefilename = "tree.nwk", 
+                       refseqfilename = "rep_set.fna")
+
+#Import the mapping file
+map <- read.csv("bus_cf_mapping.csv", row.names=1) 
+names(map)
+sample_data(all_data) <- sample_data(map) 
+
+all_data
+
+```
+All the data is now loaded into R as "all_data"
+
+phyloseq-class experiment-level object
+otu_table()   OTU Table:         [ 34571 taxa and 1362 samples ]
+sample_data() Sample Data:       [ 1362 samples by 177 sample variables ]
+tax_table()   Taxonomy Table:    [ 34571 taxa by 7 taxonomic ranks ]
+phy_tree()    Phylogenetic Tree: [ 34571 tips and 34549 internal nodes ]
+refseq()      DNAStringSet:      [ 34571 reference sequences ]
+
+Summary of Studies:
+       BEAM   Busselton Celtic_Fire      Connor        Orla 
+         38         806         477          15          26 
+#Pre-processing 
+This looks at removing the Unidentified taxa, as well as renames the rank orders in the dataset. 
+Removing things that haven't been identified at the top ranks plus Cyanobacteria.
+
+```{r Processing, eval=FALSE, tidy.opts=list(width.cutoff=60)}
+
+#Making a function: Change the OTU names
+
+#OTU is the replacement object
+makeTaxLabel <- function(OTU,all_data) {
+  OTU <- as.character(OTU) #turn taxa names into character
+  #view the otu_id from qiime as a character
+  taxstrings <- as.character(tax_table(all_data)[OTU]) 
+  empty_strings <- c("k__", "p__", "c__", "o__", "f__", "g__", "s__")
+  tax_name <- NA #making an empty list, so you can fill it up later on
+  tax_level <- length(taxstrings) #number of otus
+  while(is.na(tax_name) |
+          (tax_name %in% empty_strings)){
+    tax_name <- taxstrings[tax_level]
+    tax_level <- tax_level -1
+  } #giving the highest rank name for each OTU, returning as a vector
+  tax_name
+}
+
+#Subsititute NA for the uncultured species/OTUs
+tax_table(all_data) =gsub("s__uncultured_bacterium", 
+                          as.character(NA), 
+                          tax_table(all_data))
+tax_table(all_data) =gsub("g__uncultured_bacterium",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("f__uncultured_bacterium",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("o__uncultured_organism",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("c__uncultured_bacterium",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("g__uncultured",
+                          as.character(NA),
+                          tax_table(all_data))                      
+tax_table(all_data) =gsub("s__",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("s__uncultured",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("s__Subgroup",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("s__uncultured_organism",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("f__Family_XI_Incertae_Sedis",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("f__Family_XIII_Incertae_Sedis",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("f__Family_III_Incertae_Sedis",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("f__Family_Incertae_Sedis",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("g__Incertae_Sedis",
+                          as.character(NA),
+                          tax_table(all_data))
+tax_table(all_data) =gsub("o__Order_II_Incertae_Sedis",
+                          as.character(NA),
+                          tax_table(all_data))
+
+
+
+#Rename rank names, add the numbers to each of the taxa (ordering them) 
+
+mynames = NULL
+for (i in 1:length(taxa_names(all_data))){
+  mynames <- rbind(mynames, c(makeTaxLabel(taxa_names(all_data)[i],all_data)))
+} #binds to the tax table the OTU ids
+mynames = gsub("s__", "", mynames)
+mynames = gsub("g__", "", mynames)
+mynames = gsub("f__", "", mynames)
+mynames = gsub("o__", "", mynames)
+mynames = gsub("c__", "", mynames)
+mynames = gsub("p__", "", mynames)
+OTUID = str_c(mynames[,1],"_",seq(1,length(taxa_names(all_data)),by=1))
+tax_table(all_data) <- cbind(tax_table(all_data), mynames=OTUID)
+
+Seq_name<-taxa_names(all_data)
+tax_table(all_data)<-cbind(tax_table(all_data), Seq_name)
+tax_table(all_data)[,9]
+colnames(tax_table(all_data)) = c("Kingdom",
+                                  "Phylum",
+                                  "Class",
+                                  "Order",
+                                  "Family",
+                                  "Genus",
+                                  "Species",
+                                  "OTUID", "Seq_name")
+
+#rank_names(all_data) #renaming all the rank names
+
+tax_table(all_data) <- gsub("k__", "", tax_table(all_data))
+tax_table(all_data) <- gsub("p__", "", tax_table(all_data))
+tax_table(all_data) <- gsub("c__", "", tax_table(all_data))
+tax_table(all_data) <- gsub("o__", "", tax_table(all_data))
+tax_table(all_data) <- gsub("f__", "", tax_table(all_data))
+tax_table(all_data) <- gsub("g__", "", tax_table(all_data))
+tax_table(all_data) <- gsub("s__", "", tax_table(all_data))
+
+taxa_names(all_data) <- tax_table(all_data)[,8]
+```
+Remove the repeated Busselton runs. These runs were repeated due to poor sequencing quality in origninal runs. 
+
+```{r}
+#Remove samples labled FR (First run)
+sample_data(all_data)$Repeat
+
+all_data<-prune_samples(sample_data(all_data)$Repeat!="FR", all_data)
+```
+
+
+#Decontamination
+
+1. Remove the unassigned/unclassified Kingdom Ranks and Archaea
+Also remove the chloroplast and mitochondria
+
+```{r Load Data, eval=FALSE, tidy.opts=list(width.cutoff=60)}
+
+summary(tax_table(all_data)[,1])
+#Removed unassigned seqs @ kingdom level
+all_data = subset_taxa(all_data, Kingdom !="k__Archaea")
+all_data = subset_taxa(all_data, Kingdom !="Unassigned")
+#Remove the chloroplast
+all_data = subset_taxa(all_data, Phylum !="Cyanobacteria")
+all_data<-subset_taxa(all_data, Family!="Mitochondria" )
+
+summary(tax_table(all_data)[,3], maxsum = 50)
+```
+
+2. Filter any taxa that has less than 20 reads
+
+```{r Processing, eval=FALSE, tidy.opts=list(width.cutoff=60)}
+all_data<-filter_taxa(all_data, function(x) sum(x)  >20, TRUE)
+
+```
+
+phyloseq-class experiment-level object
+otu_table()   OTU Table:         [ 2154 taxa and 1174 samples ]
+sample_data() Sample Data:       [ 1174 samples by 177 sample variables ]
+tax_table()   Taxonomy Table:    [ 2154 taxa by 9 taxonomic ranks ]
+phy_tree()    Phylogenetic Tree: [ 2154 tips and 2141 internal nodes ]
+refseq()      DNAStringSet:      [ 2154 reference sequences ]
+
+
+3. Use qPCR data to identify contaminant OTUs 
+(Phill James code)
+
+Correlation between OTU counts and qPCR data. Using the following cut offs; 
+Corrected P-value <0.05
+Correlation value =>0.2
+
+Load the function
+qPCR = "bacterial_load"
+```{r, eval = FALSE}
+sample_data(all_data)$qPCRCN[is.na(sample_data(all_data)$qPCRCN)] <- 0
+sample_data(all_data)$bacterial_load<-sample_data(all_data)$qPCRCN
+sample_data(all_data)$bacterial_load<-as.numeric(as.character(sample_data(all_data)$bacterial_load))
+
+```
+The Function (by Phill James)
+```{r, eval = FALSE}
+identify_contaminant_otus <- function(physeq,
+                                      rho_cutoff = 1,
+                                      tax_rank_levels_n = 9,
+                                      pval = 0.05,
+                                      qpcr_header_name = "bacterial_load",
+                                      correction_method = "hochberg")
+  
+  
+{
+  timm <- data.frame(time = numeric())
+  otu_cors <- data.frame(otu_name = row.names(otu_table(physeq)),
+                         otu_sequences_number = as.vector(taxa_sums(physeq)),
+                         pvalue = rep(0,dim(otu_table(physeq))[1]),
+                         corrected_p.value = rep(0,dim(otu_table(physeq))[1]),
+                         spearmans_rho = rep(0,dim(otu_table(physeq))[1]),
+                         Family = as.character(tax_table(physeq)[,tax_rank_levels_n-4]),
+                         Genus = as.character(tax_table(physeq)[,tax_rank_levels_n-3]) ,
+                         Species = as.character(tax_table(physeq)[,tax_rank_levels_n-2]))
+  
+  for(i in 1:dim(otu_table(physeq))[1]) {
+    ptm<-proc.time()
+    temp<-cor.test(as.vector(otu_table(physeq)[i,]),
+                   as.vector(sample_data(physeq)[[qpcr_header_name]]), method = "spearman")
+    
+    otu_cors[i,3] <- temp$p.value
+    otu_cors[i,5] <- temp$estimate
+    Sys.sleep(0.001)
+    print(paste("Correlating OTU", i, "of",
+                dim(otu_table(physeq))[1],
+                "(",round(i/dim(otu_table(physeq))[1]*100),
+                "% complete","-", round(mean(timm[,1]) *
+                                          (dim(otu_table(physeq))[1] - i)),
+                "seconds remaining)"))
+    
+    tim <- proc.time()-ptm
+    timm[i,1] <- as.numeric(tim[3])
+    flush.console()
+  }
+  
+  print("correcting P.values")
+  corrected_pvalues <- p.adjust(otu_cors[,3],correction_method)
+  otu_cors$corrected_p.value <- corrected_pvalues
+  
+  print("Generating Restults Table")
+  otu_output <- subset(otu_cors, corrected_p.value <= pval)
+  otu_output <- subset(otu_output, spearmans_rho <= rho_cutoff)
+  otu_output <- otu_output[order(otu_output$spearmans_rho),]
+  
+  return(otu_output)
+  
+}
+
+```
+
+ID contaminants 
+1. Whole dataset
+2. Bussselton dataset
+3. Celtic Fire dataset
+```{r Processing, eval=FALSE, tidy.opts=list(width.cutoff=60)}
+potential_contaminants <- identify_contaminant_otus(all_data, rho_cutoff = -0.2, pval= 0.05)
+potential_contaminants
+
+potential_contaminants1 <- identify_contaminant_otus(all_data, rho_cutoff = -0.4, pval= 0.05)
+potential_contaminants1
+
+summary(sample_data(all_data)$Study)
+bus_data<-prune_samples(sample_data(all_data)$Study=="Busselton"&sample_data(all_data)$Disease!="Positive", all_data)
+
+potential_contaminants_bus <- identify_contaminant_otus(bus_data, rho_cutoff = -0.2, pval= 0.05)
+potential_contaminants_bus
+
+CF_data<-prune_samples(sample_data(all_data)$Study!="Busselton"&sample_data(all_data)$Disease!="Positive", all_data)
+potential_contaminants_CF <- identify_contaminant_otus(CF_data, rho_cutoff = -0.2, pval= 0.05)
+potential_contaminants_CF
+
+
+```
+Remove contaminants 
+```{r}
+potential_contaminants_bus$otu_name[potential_contaminants_bus$otu_name %in% potential_contaminants_CF$otu_name]
+
+#make a datafram of the contmainants from each dataset
+contam<-rbind(potential_contaminants_bus,potential_contaminants_CF )
+#Compare the combined contaminants to the individual datasets
+potential_contaminants$otu_name[potential_contaminants$otu_name %in% contam$otu_name]
+
+#We will use contam to remove these OTUs from all_data
+
+tremove<-contam$otu_name
+all_working<-all_data
+
+for(OTU in tremove){ 
+  print(length(taxa_names(all_working)))
+all_working <- subset_taxa(all_working, OTUID != OTU)
+ } 
+
+
+all_working
+```
+New dataset - Contamination removed - "all_working"
+
+4.Decontam  
+Use decontom to check if there are any other OTUs considered to be contaminants
+- Frequency
+```{r}
+
+as.numeric(as.character(sample_data(all_working)$bacterial_load))
+sample_data(all_working)$bacterial_load[sample_data(all_working)$bacterial_load==0] <- 0.1
+sample_data(all_working)$bacterial_load[is.na(sample_data(all_working)$bacterial_load)]<-0.1
+
+contamdf.freq1 <- isContaminant(all_working, method="frequency", conc="bacterial_load", threshold = 0.1, batch = "Study")
+head(contamdf.freq1)
+
+table(contamdf.freq1$contaminant) #29 contaminants
+which(contamdf.freq1$contaminant)
+
+plot_frequency(all_working, taxa_names(all_working)[c(which(contamdf.freq1$contaminant))], conc="bacterial_load") + 
+ xlab("DNA Concentration")
+
+subset(contamdf.freq1, contaminant ==TRUE)
+
+```
+The frequency method did not look convincing. Studies were examined together and separately to examine the data fully. In order to explore the data further the prevalence method was explored. 
+
+- Negative (Prevealence)
+```{r}
+sample_data(all_working)$Negative<-sample_data(all_working)$Disease == "Negative"
+all_neg<-prune_samples(sample_data(all_working)$Disease!="Positive"&sample_data(all_working)$Disease!="EX_control",  all_working)
+
+#Look at prevalence only
+contamdf.prev <- isContaminant(all_neg, method="prevalence", neg="Negative", threshold = 0.1, batch = "Study")
+table(contamdf.prev$contaminant)# 55 contaminants
+which(contamdf.prev$contaminant)
+
+plot_frequency(all_neg, taxa_names(all_neg)[c(which(contamdf.prev$contaminant))], conc="bacterial_load") + 
+ xlab("DNA Concentration")
+subset(contamdf.prev, contaminant ==TRUE)
+
+#Bussleton
+bus_neg<-prune_samples(sample_data(all_neg)$Study=="Busselton", all_neg)
+
+#Look at prevalence only
+contamdf.prev1 <- isContaminant(bus_neg, method="prevalence", neg="Negative", threshold = 0.1, batch = "Study")
+table(contamdf.prev1$contaminant)# 48 contaminants
+which(contamdf.prev1$contaminant)
+
+plot_frequency(bus_neg, taxa_names(bus_neg)[c(which(contamdf.prev1$contaminant))], conc="bacterial_load") + 
+ xlab("DNA Concentration")
+subset(contamdf.prev1, contaminant ==TRUE)
+
+#Celtic Fire
+CF_neg<-prune_samples(sample_data(all_neg)$Study!="Busselton", all_neg)
+
+#Look at prevalence only
+contamdf.prev2 <- isContaminant(CF_neg, method="prevalence", neg="Negative", threshold = 0.1, batch = "Study")
+table(contamdf.prev2$contaminant)# 10 contaminants
+which(contamdf.prev2$contaminant)
+
+plot_frequency(CF_neg, taxa_names(CF_neg)[c(which(contamdf.prev2$contaminant))], conc="bacterial_load") + 
+ xlab("DNA Concentration")
+subset(contamdf.prev2, contaminant ==TRUE)
+
+
+```
+Using the prevalence method in "decontam", controling for study using the batch control and a threshold of 0.1, 55 contaminants were identified. These OTUs were significantly more abundant in the negative controls and were often associated with either the Busselton or Celtic Fire cohorts. 
+
+The 55 contaminants were removed from "all_working". 48 were identified from the Bussleton data set and 10 from the Celtic Fire dataset. All identified OTU were checked and all the found to be consistent with contaminent OTUs. OTUs identified associated with each separate dataset were removed for the final working dataset.  
+
+```{r}
+
+bus_con<-data.frame(subset(contamdf.prev1, contaminant ==TRUE))
+bus_con$ID<-row.names(bus_con)
+cf_con<-data.frame(subset(contamdf.prev2, contaminant ==TRUE))
+cf_con$ID<-row.names(cf_con)
+contam2<-rbind(bus_con, cf_con)
+contam2[!duplicated(contam2$ID), ]
+
+dremove<-as.factor(contam2$ID)
+data_working<-all_working
+
+for(OTU in dremove){ 
+  print(length(taxa_names(data_working)))
+data_working <- subset_taxa(data_working, OTUID != OTU)
+} 
+
+all_working<-data_working
+```
+All working can now be used for all further analysis. 
+
+#NMDS between studies
+Look at the difference between CF and Bussleton
+```{r Processing, eval=FALSE, tidy.opts=list(width.cutoff=60)}
+
+all_ord <- ordinate(all_working, "NMDS", "bray")
+p<-plot_ordination(all_working, all_ord, type="sample", color="Study", title="Differences between studies")+stat_ellipse(type = "norm", linetype = 2)
+p+geom_point(alpha =0.5)
+
+plot_ordination(all_data, all_ord, type="sample", color="Disease", title="Differences between studies")+stat_ellipse(type = "norm", linetype = 2)
+
+plot_ordination(all_data, all_ord, type="sample", color="SwabSite", title="Differences between studies")+stat_ellipse(type = "norm", linetype = 2)
+
+plot_ordination(all_data, all_ord, type="sample", color="Extraction_Method", title="Differences between studies")+stat_ellipse(type = "norm", linetype = 2)
+
+```
+There is a lot of overlab between the 2 studies.  
+
+#Extaction methods
+We need to remove the Qiagen extractions as these were a test.  
+```{r}
+working_data<-prune_samples(sample_data(all_working)$Extraction_Method !="Qiagen_Kit", all_working)
+```
+#Remove other studies
+Subset the BEAM study for Claire
+```{r}
+BEAM<-prune_samples(sample_data(working_data)$Study =="BEAM", working_data)
+
+save(BEAM, file = "BEAM.Rdata")
+```
+
+Celtic fire and bussleton only. 
+```{r}
+Bus_CF<-prune_samples(sample_data(working_data)$Study !="BEAM"&sample_data(working_data)$Study !="Connor"&sample_data(working_data)$Study !="Orla", working_data)
+
+
+save(Bus_CF, file = "working_bus_Cf.Rdata")
+```
+
+Bus_CF is now used as a working dataset. 
+
+Now the controls need to be removed. 
+Positive = Mock community
+Negative = PCR negative
+EX_control = Extraction control from celtic fire study 
+
+```{r}
+
+Bus_CF<-prune_samples(sample_data(Bus_CF)$Disease !="Negative"&sample_data(Bus_CF)$Disease !="Positive"&sample_data(Bus_CF)$Disease !="EX_control", Bus_CF)
+Bus_CF
+Bus_CF <- filter_taxa(Bus_CF, function(x) sum(x) > 0, TRUE)
+
+busselton<-prune_samples(sample_data(Bus_CF)$Study =="Busselton", Bus_CF)
+busselton <- filter_taxa(busselton, function(x) sum(x) > 0, TRUE)
+save(busselton, file = "working_busselton.Rdata")
+celtic_fire<-prune_samples(sample_data(Bus_CF)$Study =="Celtic_Fire", Bus_CF)
+celtic_fire <- filter_taxa(celtic_fire, function(x) sum(x) > 0, TRUE)
+
+```
+
+Remove excluded samples in the Celtic fire dataset- 
+
+```{r}
+cf_map<-read.csv("/Users/leahcuthbertson/Documents/Work/Studies/CelticFire/16S/CF_claire/Celtic_Fire_16S_and_ITS2_sequencing_runs_combined_map_from_extraction_info_and_database_Nov_2019.csv", row.names = 1)
+
+sample_data(celtic_fire)<-sample_data(cf_map)
+names(sample_data(celtic_fire))
+
+#Remove the orla samples not identidies in the original data (n= 96)
+celtic_fire1<-prune_samples(sample_data(celtic_fire)$Study_checked !="Orla", celtic_fire)
+
+#Remove sample with missing data (subject 008) (was also a smoker so failed to meet the inclusion criteria)
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="8")
+
+#Remove indeterminate samples. These were chosen for removal as despite being labeled controls these patients were on some form of asthma medication. 
+celtic_fire1 <- subset_samples(celtic_fire1, Indeterminate=="No")
+
+#Remove samples from patients with underlying diseases - Sarcoidosis
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="645")
+
+#Remove asthmatic patients with history of smoking or unknown smoking history.
+#Asthmatics who are current smokers (subject 644 and 382)
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="644") #A
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="382")
+#Asthmatic with unknown smoking history. Inconsistency in the data. Removed due to unclear results. 
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="415")
+
+#Remove patients with recent antibiotic use. 
+#Subject 362 - Recent Azithromycin use. No confirmation as to when this was. Removed as a precaution. 
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="362")
+
+#Subject 638 - prophylactic azithromycin 
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="638")
+
+#Remove subjects with unclear medication dose (subject 300 and subject 375)
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="300")
+celtic_fire1 <- subset_samples(celtic_fire1, Study_ID!="375")
+
+
+length(sort(unique(sample_data(celtic_fire1)$Study_ID)))
+#Save working celtic fire dataset
+save(celtic_fire1, file = "working_CF.Rdata")
+
+```
+```{r}
+
+bus_CF_sums<-cbind(tax_table(busselton)[,9], data.frame(taxa_sums(busselton)), data.frame(taxa_sums(celtic_fire1)),data.frame(taxa_sums(busselton)), data.frame(taxa_sums(celtic_fire1)))
+
+bus_CF_sums[,4:5][bus_CF_sums[,4:5]>0]<-1
+
+no_studies<-data.frame(rowSums(bus_CF_sums[,4:5]))
+bus_CF_sums<-data.frame(cbind(bus_CF_sums, no_studies))
+
+names(bus_CF_sums)<- c("Seq_name","taxa_sums.busselton"  , "taxa_sums.celtic_fire" ,"busselton"  , "celtic_fire" ,"no_studies"  )
+
+bus_CF_sums<-data.frame(bus_CF_sums)
+
+write.csv(bus_CF_sums, "bus_CF_taxsums.csv")
+````
+
+#Remove dulicates from the Celtic fire data.
+These were samples that went through repeat sequencing due to lack of reads in the original sequencing
+```{r}
+load("working_bus_Cf_subset.Rdata")
+
+Bus_CF1
+
+cf1<-sample_data(Bus_CF1)
+summary(sample_data(Bus_CF1)$Repeat)
+cf1 %>% group_by(Study) %>% summarise(Repeat)
+
+write.csv(cf1,"bus_cf_data.csv" )
+
+data<-read.csv("bus_cf_data.csv", row.names = 1)
+sample_data(Bus_CF1)<-sample_data(data)
+
+```
+Remove duplicates
+```{r}
+n_occur <- data.frame(table(sample_data(Bus_CF1)$SampleID))
+sample_data(Bus_CF1)$SampSums<-sample_sums(Bus_CF1)
+df1<-data.frame(sample_data(Bus_CF1))
+df1$ID<-rownames(df1)
+
+library(dplyr)
+df2<-df1 %>%
+  group_by(SampleID) %>%
+  filter(SampSums == max(SampSums))
+df2<-data.frame(df2)
+rownames(df2)<-df2$ID
+
+sample_data(Bus_CF1)<-sample_data(data.frame(df2))
+#
+
+save(Bus_CF1, file ="Bus_CF_working_noduplicates.Rdata")
+
+```
+
+#Make Fasta files
+Fastq files of rep seqs for all included OTUs and each study. 
+###All_data
+```{r}
+#OTU table all data
+
+Bus_CF_OTUtable<-data.frame(otu_table(Bus_CF1))
+write.csv(Bus_CF_OTUtable, "Bus_CF_OTUtable.csv")
+
+#fasta file for all data
+seqMiner <- function(x, psObject=raw_data){
+  DNA_Sequence <- data.frame(get(psObject)@refseq[x],stringsAsFactors = FALSE)
+  return(DNA_Sequence[1,])
+}
+taxa_names(Bus_CF1)<-as.character(tax_table(Bus_CF1)[,9]) 
+ 
+cf_bus_otu <- names(sort(taxa_sums(Bus_CF1), TRUE))
+
+#use sapply to feed vector or column in dataframe into seqMiner function 
+dnaSequences <- sapply(cf_bus_otu, FUN=seqMiner, psObject="Bus_CF1")
+dnaSequences <- as.data.frame(dnaSequences)
+
+#convert to fasta file
+fna <- character(2 * nrow(dnaSequences))
+fna[c(TRUE, FALSE)] <- paste(">",rownames(dnaSequences),sep="")
+fna[c(FALSE, TRUE)] <- as.character(dnaSequences$dnaSequences)
+writeLines(fna, "cf_bus_otus.fasta") # uncomment to write to fasta file
+rm(dnaSequences,fna)
+
+
+```
+
+###Busselton
+Fastq files of rep seqs for all included OTUs
+```{r}
+#load functions
+seqMiner <- function(x, psObject=raw_data){
+  DNA_Sequence <- data.frame(get(psObject)@refseq[x],stringsAsFactors = FALSE)
+  return(DNA_Sequence[1,])
+}
+
+ 
+busselton<-prune_samples(sample_data(Bus_CF)$Study =="Busselton", Bus_CF)
+busselton <- filter_taxa(busselton, function(x) sum(x) > 0, TRUE)
+
+tax_table(busselton)[,9]
+
+# get the top 40 OTUs from rarefied data
+#bal_top_40 <- names(sort(taxa_sums(balRare), TRUE)[1:40])
+as.character(tax_table(busselton)[,9]) 
+ 
+bus_otu <- names(sort(taxa_sums(busselton), TRUE))
+
+#use sapply to feed vector or column in dataframe into seqMiner function 
+dnaSequences <- sapply(bus_otu, FUN=seqMiner, psObject="busselton")
+dnaSequences <- as.data.frame(dnaSequences)
+
+ 
+
+#convert to fasta file
+fna <- character(2 * nrow(dnaSequences))
+fna[c(TRUE, FALSE)] <- paste(">",rownames(dnaSequences),sep="")
+fna[c(FALSE, TRUE)] <- as.character(dnaSequences$dnaSequences)
+writeLines(fna, "busselton_otus.fasta") # uncomment to write to fasta file
+rm(dnaSequences,fna)
+```
+###Celtic Fire
+```{r}
+#load functions
+seqMiner <- function(x, psObject=raw_data){
+  DNA_Sequence <- data.frame(get(psObject)@refseq[x],stringsAsFactors = FALSE)
+  return(DNA_Sequence[1,])
+}
+
+ 
+cf<-prune_samples(sample_data(Bus_CF)$Study =="Celtic_Fire", Bus_CF)
+cf <- filter_taxa(cf, function(x) sum(x) > 0, TRUE)
+
+
+# get the top 40 OTUs from rarefied data
+#bal_top_40 <- names(sort(taxa_sums(balRare), TRUE)[1:40])
+
+ 
+cf_otu <- names(sort(taxa_sums(cf), TRUE))
+
+#use sapply to feed vector or column in dataframe into seqMiner function 
+dnaSequences <- sapply(cf_otu, FUN=seqMiner, psObject="cf")
+dnaSequences <- as.data.frame(dnaSequences)
+
+ 
+
+#convert to fasta file
+fna <- character(2 * nrow(dnaSequences))
+fna[c(TRUE, FALSE)] <- paste(">",rownames(dnaSequences),sep="")
+fna[c(FALSE, TRUE)] <- as.character(dnaSequences$dnaSequences)
+writeLines(fna, "cf_otus.fasta") # uncomment to write to fasta file
+rm(dnaSequences,fna)
+```
+
+#Abundance/Prevelance/Dominance
+
+```{r Abundance/Prevelance/Dominance, eval=FALSE, tidy.opts=list(width.cutoff=60)}
+# Make a new object with just the taxon abundances, sorted by most abundant
+taxon_abund.pa = sort(taxa_sums(busselton))
+taxon_abund.pa = as.data.frame(taxon_abund.pa)
+taxon_abund.pa = as.data.frame(cbind(rownames(taxon_abund.pa), 
+                                     taxon_abund.pa$taxon_abund.pa))
+taxon_abund.pa$V2 = as.numeric(as.character(taxon_abund.pa$V2))
+
+#Rename the column names
+colnames(taxon_abund.pa)[1] = "OTU"
+colnames(taxon_abund.pa)[2] = "Abundance"
+
+#Make a column for prevelance
+buss.pa = busselton
+otu_table(buss.pa)[otu_table(buss.pa)>0] <- 1
+
+## Make a new object with just the taxon abundances, sorted by most abundant
+taxon_abund1.pa = sort(taxa_sums(buss.pa))
+taxon_abund1.pa = as.data.frame(taxon_abund1.pa)
+taxon_abund1.pa = as.data.frame(cbind(rownames(taxon_abund1.pa), 
+                                      taxon_abund1.pa$taxon_abund1.pa))
+taxon_abund1.pa$V2 = as.numeric(as.character(taxon_abund1.pa$V2))
+
+bus_dom = cbind.data.frame(taxon_abund.pa[order(taxon_abund.pa$OTU),],
+                           (taxon_abund1.pa[order(taxon_abund1.pa$V1),]$V2))
+#Add the Prevelance column
+colnames(bus_dom)[3] = "Prevelance"
+
+#make another variable that is the percentage of the prevalence across 
+#the samples and bind it together with the file, 
+#so this dataframe has 3 variables. 
+#this shows the percentage of samples in which the particular OTU is found
+Percent_Prevelance<- (bus_dom$Prevelance / 578) *100
+bus_dom2 = cbind(bus_dom, Percent_Prevelance)
+bus_dom2$Prevelance = as.numeric(bus_dom2$Prevelance)
+bus_dom2$Percent_Prevelance = as.numeric(bus_dom2$Percent_Prevelance)
+
+#round the percentages to 2dp
+bus_dom2[,'Percent_Prevelance']=format(round(bus_dom2[,'Percent_Prevelance'],2),
+                                       nsmall=2)
+write.csv(bus_dom2, "bus_dom2.csv")
+
+topbugs = subset(bus_dom2, Abundance > 17000)
+
+
+#Take only the most common OTUs, the rest can be in the "Other" bar
+## Take the bugs with fewer than 2000 reads only
+otherbugs = subset(bus_dom2, Abundance < 17000)
+sum(otherbugs$Abundance)#203906////1384256
+sum(bus_dom2$Abundance)#5237748////43060396
+
+
+## Add a row to the topbugs object with the sum of these and how many there are.  
+#Have to convert to character first as otherwise rbind complains about factors.
+topbugs[,1] = as.character(topbugs[,1])
+topbugs = rbind(topbugs, c(c(paste(dim(bus_dom2)[1]-dim(topbugs)[1],
+                                   "Other OTUS"),
+                             sum(otherbugs$V2)),
+                           sum(otherbugs$V2)))
+topbugs[,1] = as.factor(topbugs[,1])
+topbugs[,2] = as.numeric(topbugs[,2])
+
+dim(topbugs)
+
+topbugs[132,2] = sum(otherbugs$Abundance)
+topbugs[132,4] = 3.89 #where did this number come from?
+topbugs$Percent_Prevelance = as.numeric(topbugs$Percent_Prevelance)
+
+
+#Plot them 
+#This includes a function to sort, otherwise they will come out in the order 
+#of the factor levels
+ggplot(topbugs, aes(x = Abundance, y = reorder(OTU, Abundance))) +
+  geom_point(aes(size = Percent_Prevelance,colour = Percent_Prevelance)) +   
+  scale_colour_gradient(low="black", high="red")+  
+  scale_fill_discrete(name="Prevelance") +  
+  scale_size(range=c(1,6)) +  
+  guides(color=guide_legend(), size = guide_legend()) +  
+  xlab("Abundance") +   
+  ggtitle("Most Common OTUs")+  
+  scale_x_log10()+  
+  theme(axis.title.y = element_blank()) 
+```
+
+```{r}
+tax_table(busselton)
+taxa_sums(busselton)
+
+```
+
+
+
+#Celtic fire analysis
+```{r}
+load("Bus_CF_working_noduplicates.Rdata")
+
+Bus_CF1
+
+load("Celtic_Fire/working_CF.Rdata")
+celtic_fire1
+sample_names(celtic_fire1)
+data1<-read.csv("cf_formatted_mapfile.csv", row.names = 1)
+sample_data(celtic_fire1)<-sample_data(data1)
+
+```
+rarefy
+samples with less than 1000 reads were removed from further analysis 
+```{r}
+min(sample_sums(celtic_fire1))
+
+cf_work1 <- prune_samples(sample_sums(celtic_fire1)>=1000, celtic_fire1)
+min(sample_sums(cf_work1))
+cf_rare<-rarefy_even_depth(cf_work1, min(sample_sums(cf_work1)), rngseed = 2384)
+
+```
+
+# Stacked Bar of all working data
+
+orderd bar function
+```{r, echo=FALSE, include=FALSE}
+plot_ordered_bar_x_order<-function (physeq, x = "Sample", 
+                                    y = "Abundance", 
+                                    fill = NULL, 
+                                    leg_size = 0.5,
+                                    title = NULL, facet_grid = NULL, order.var = NULL,pad_with_other = TRUE, rarefaction_level = NULL, bar_width = 0, bar_line_col = "black", line_weight = 0.2) 
+{
+  
+  if(pad_with_other == TRUE & is.null(rarefaction_level)){
+    warning("Initial Rarefaction level needed to calculate Other bar")
+  }
+  
+  require(ggplot2)
+  require(phyloseq)
+  require(plyr)
+  require(grid)
+  bb <- psmelt(physeq)
+  bb <- within(bb, Sample <- factor(Sample, levels =unique(bb[order(eval(parse(text=paste("bb$", order.var, sep = "")))),]$Sample)))
+  other <- data.frame(Sample = aggregate(bb$Abundance, by=list(bb$Sample), FUN=sum)[,1], 
+                      Other = rarefaction_level- aggregate(bb$Abundance, by=list(bb$Sample), FUN=sum)[,2])
+  
+  
+  bdf <-data.frame(matrix(NA, ncol = ncol(bb), nrow=nrow(other)))
+  colnames(bdf) <- colnames(bb)
+  bdf$Sample <- other$Sample
+  bdf$Abundance <- other$Other
+  bdf$Genus <- "Other"
+  bb <- rbind(bb, bdf)
+  
+  
+  samp_names <- aggregate(bb$Abundance, by=list(bb$Sample), FUN=sum)[,1]
+  .e <- environment()
+  bb[,fill]<- factor(bb[,fill], rev(sort(unique(bb[,fill])))) #fill to genus
+  
+  
+  bb<- bb[order(bb[,fill]),] # genus to fill
+  p = ggplot(bb, aes_string(x = x, y = y, 
+                            fill = fill), 
+             environment = .e, ordered = FALSE)
+  
+  
+  p = p +geom_bar(stat = "identity", 
+                  position = "stack", 
+                  color = bar_line_col, size = line_weight ) 
+  
+  p = p + theme(axis.text.x = element_text(angle = -90, hjust = 0))
+  
+  p = p + guides(fill = guide_legend(override.aes = list(colour = NULL), reverse=TRUE)) + theme(legend.key = element_rect(colour = "black")) 
+  
+  p = p + theme(legend.key.size = unit(leg_size, "cm"))
+  
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(~facet_grid)
+  }
+  
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+```
+colour pallette
+```{r, echo=FALSE, include=FALSE}
+ # First of all get all the taxa you want a colour for
+# Here I want the genera that correspond to the top 20 otus
+##all<-prune_samples(sample_data(work1)$Sample_type!="neg"&sample_data(van_all)$Sample_type!="Mock"&sample_data(van_all)$Disease!="Kit control"&sample_data(van_all)$Disease!="Brush control", van_all)
+
+top_50<- prune_taxa(names(sort(taxa_sums(celtic_fire1),TRUE)[1:50]),celtic_fire1)
+tax_table(top_50) = gsub("g__", "", tax_table(top_50))
+tax_table(top_50)[24,6]<-"Lachnospiraceae"
+tax_table(top_50)[46,6]<-"Leptotrichiaceae"
+
+genera <- NA # Make an empty object to hold Genera
+genera <- append(genera, tax_table(top_50)[,6])
+genera <- unique(genera)
+genera <- genera[-1]
+
+
+custom_final26 = c("#D2781E", "#ffc0cb", #NA
+  "#771155", #  g__Streptococcus
+"#AA4488", #         g__Leptotrichia 
+"#D21E2C", #3       g__Staphylococcus 
+"#CC99BB", #4        g__Fusobacterium 
+"#114477", #5              g__Gemella 
+"#4477AA", #6       g__Granulicatella
+"#1E78D2",  #7       g__Dolosigranulum 
+"#77AADD", #8        g__Porphyromonas 
+"#DDAA77", #9       g__Capnocytophaga 
+"#44AAAA", #10          g__Bergeyella  #11              g__Rothia 
+"#77CCCC", #12         g__Actinomyces 
+"#117744", #13     g__Corynebacterium 
+"#117777", #14           g__Atopobium 
+"#1ED278", #15         g__Selenomonas 
+"#88CCAA", #16         g__Peptococcus 
+"#44AA77", #17         g__Veillonella 
+"#AA4455", #18         g__Megasphaera 
+"#EA6CC0", #19         g__Haemophilus 
+"#AA7744", #20     g__Aggregatibacter 
+"#DD7788", #21           g__Moraxella 
+"#777711", #22           g__Neisseria 
+"#DDDD77", #23          g__Prevotella 
+"#AAAA44", 
+"#774411",  
+"#D2D21E")
+
+#, "#D2781E", "#771122", "#7f7f7f")
+
+
+#genera[is.na(genera)] <- "Unspecified Firmicutes"
+###### the important bit #####
+master_pal <- data.frame(Genus = genera, col = custom_final26) # Make a dataframe, one column has the taxa ids, the other a colour
+#genera[is.na(genera)] <- "Unspecified Firmicutes"
+
+my_pal <-master_pal$col # a vector of hex colours
+my_pal <- as.character(my_pal) # turned into a character
+names(my_pal) <- master_pal$Genus # index them with the names
+
+#summary#########################
+
+#now in a plot you can just do scale_fill_manual(values=my_pal) at any point and it will drop the colours you don’t need but lookup the ones you do!
+
+```
+```{r}
+cf_otu<-t(otu_table(cf_rare))
+
+cf_dist<-hclust(vegdist(t(otu_table(cf_rare)), method="bray"))
+plot(cf_dist)
+```
+
+```{r}
+h_labels <- data.frame(labels=cf_dist$labels, sample_order = seq(1,length(cf_dist$labels),1))
+plot_order <- cbind(h_labels[cf_dist$order,],seq(1,length(cf_dist$order),1))
+
+df1<-plot_order[order(plot_order[,2]),]
+
+hclust_plot_order <- data.frame(plot_order = df1[,3])
+#order by hclust
+sample_data(cf_rare)<-cbind(sample_data(cf_rare), hclust_plot_order)
+
+library(ggplot2)
+library(ggdendro)
+library(grid)
+require(dendextend)
+
+dend<-as.dendrogram(hclust(vegdist(cf_otu, method="bray"))) %>% set("branches_lwd", .2)
+
+gg_dend <- as.ggdend(dend)
+pa1<-ggplot(gg_dend, labels = F)+theme(plot.margin=unit(c(0,-0.48,-0.8,-0.48),"cm"))
+pa1
+```
+
+```{r}
+cf1<- names(sort(taxa_sums(cf_rare), decreasing = TRUE)[1:20])
+top20_cf= prune_taxa(cf1, cf_rare)
+tax_table(top20_cf)
+#tax_table(top20_acute)[,6][is.na(tax_table(top20_acute)[,6])] <- "Unspecified Firmicutes"
+
+sample_sums(top20_cf)
+tax_table(top20_cf) = gsub("g__", "", tax_table(top20_cf))
+
+pa2<-plot_ordered_bar_x_order(top20_cf, fill="Genus", order.var = "plot_order", rarefaction_level = sample_sums(cf_rare))+theme( axis.title.x = element_blank())+theme(axis.text.y = element_blank())+scale_y_continuous(expand = c(0,0))+theme(axis.title.y = element_text(size=6, face="bold"), axis.text.x = element_blank(), axis.ticks.y = element_blank())+ theme(legend.title = element_text( size=6, face = "bold"))+theme(legend.text=element_text(size=6))+theme(legend.key.size = unit(0.3, "cm"))+scale_fill_manual(values= my_pal, na.value = "grey")
+
+```
+
+```{r}
+cf_data<-sample_data(cf_rare)
+names(cf_data)
+
+samp_site<-data.frame(c(data.frame(row.names(cf_data)),cf_data[,2], cf_data[,58]))
+samp_site$ID <- factor(samp_site$row.names.cf_data. , levels = samp_site$row.names.cf_data. [order(samp_site$plot_order)])
+
+gender<-data.frame(c(data.frame(row.names(cf_data)),cf_data[,4], cf_data[,58]))
+bmi<-data.frame(c(data.frame(row.names(cf_data)),cf_data[,16], cf_data[,58]))
+
+test<-data.frame(c(data.frame(row.names(cf_data)),cf_data[,9], cf_data[,14], cf_data[,58]))
+test$ID <- factor(test$row.names.cf_data. , levels = test$row.names.cf_data. [order(test$plot_order)])
+test1<-melt(test[,2:5], id=c("ID", "plot_order"))
+test1$value<-as.factor(test1$value)
+
+pa3 <- ggplot(test1, aes(ID, variable)) + geom_tile(aes(fill = value),colour = "white")+theme(axis.title.y = element_text(size=6, face="bold"),axis.ticks.y = element_blank())+theme(legend.key.size = unit(0.3, "cm"))+ guides(fill = guide_legend(title = ""))+theme(axis.text.x  = element_text(angle=90), axis.text  = element_text(size=4))+theme(legend.text=element_text(size=6))+ theme(legend.title = element_text( size=6, face = "bold"))+theme_minimal()+theme(axis.title.y = element_text(size=6, face="bold"), axis.text.x = element_blank(), axis.ticks.y = element_blank())
+pa3
+
+pa4 <- ggplot(samp_site, aes(ID, 1)) + geom_tile(aes(fill = SampleSite),colour = "white")+theme(axis.title.y = element_text(size=6, face="bold"),axis.ticks.y = element_blank())+theme(legend.key.size = unit(0.3, "cm"))+ guides(fill = guide_legend(title = ""))+theme(axis.text.x  = element_text(angle=90), axis.text  = element_text(size=4))+theme(legend.text=element_text(size=6))+ theme(legend.title = element_text( size=6, face = "bold"))+theme_minimal()+theme(axis.title.y = element_text(size=6, face="bold"), axis.text.x = element_blank(), axis.ticks.y = element_blank())
+pa4
+
+#+ scale_fill_gradient(low = "yellow", high = "blue")
+```
