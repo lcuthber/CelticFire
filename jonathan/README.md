@@ -46,15 +46,15 @@
 │       ├── tom_matrices.rds                                    # WGCNA TOM matrices
 │       └── wgcna_module_names.csv                              # WGCNA module names
 └── scripts
-              ├── eggnog_parsing.R                              # parses lookups from KO database
-              ├── isolate_otu_mapping.R                         # prepare the isolate-OTU map
-              ├── kegg_analysis.R                               # run KO-based isolate clustering
-              ├── kegg_utils.R                                  # utility functions for isolate clustering
-              ├── ko_lookup_utils.R                             # utility functions for KO database lookups
-              ├── paper_correlation_heatmap.R                   # Figure 2
-              ├── parse_kegg_info.R                             # parse raw KO lookups
-              ├── plot_utils.R                                  # plot saving function
-              ├── supplementary_figures.R                       # Figure S3a, S3b
-              ├── wgcna_module_composition.R                    # makes tables of WGNCA module composition - Tables not currently in manuscript
-              └── wgcna_module_isolate_cluster_betareg.R        # not currently in manuscript - to remove
+    ├── eggnog_parsing.R                              # parses lookups from KO database
+    ├── isolate_otu_mapping.R                         # prepare the isolate-OTU map
+    ├── kegg_analysis.R                               # run KO-based isolate clustering
+    ├── kegg_utils.R                                  # utility functions for isolate clustering
+    ├── ko_lookup_utils.R                             # utility functions for KO database lookups
+    ├── paper_correlation_heatmap.R                   # Figure 2
+    ├── parse_kegg_info.R                             # parse raw KO lookups
+    ├── plot_utils.R                                  # plot saving function
+    ├── supplementary_figures.R                       # Figure S3a, S3b
+    ├── wgcna_module_composition.R                    # makes tables of WGNCA module composition - Tables not currently in manuscript
+    └── wgcna_module_isolate_cluster_betareg.R        # not currently in manuscript - to remove
 ```
