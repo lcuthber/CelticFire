@@ -1,0 +1,503 @@
+---
+title: "glmer_revision"
+author: "Theda Bartolomaeus + Till Birkner"
+date: "2023-05-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Account for sex and age when testing the pulmotype distribution
+Library
+```{r, message=FALSE}
+# Revision models
+library(dplyr)
+library(tidyr)
+library(broom)
+library(lme4)
+library(lmerTest)
+library(ggplot2)
+```
+
+## Comparing studies (Busselton/ Celticfire), OTS swabs only so we have the same swabsite in both studies
+```{r}
+metadata_pulmoOTSBoth <- read.table(file = "../20201117_Enterotyping/helper.glmer.buss.celtic.revision.csv", sep = ",", header = T, row.names = 1)
+
+metadata_pulmoOTSBoth$Study[metadata_pulmoOTSBoth$Study == "0"] <- "Bussolton"
+metadata_pulmoOTSBoth$Study[metadata_pulmoOTSBoth$Study == "1"] <- "Throat Swabs\nCelticfire"
+metadata_pulmoOTSBoth$pulmotype[metadata_pulmoOTSBoth$pulmotype == "airway_community_1"] <- "Community\nType 1"
+metadata_pulmoOTSBoth$pulmotype[metadata_pulmoOTSBoth$pulmotype == "airway_community_2"] <- "Community\nType 2"
+
+
+aFrame_1 <- reshape2::melt(t(apply(table (as.factor(metadata_pulmoOTSBoth$Study), as.factor(metadata_pulmoOTSBoth$pulmotype)),
+                         1, function(x) x/sum(x))))
+heatmapStudy <- ggplot (aFrame_1, aes (x = as.factor(Var1), y = as.factor(Var2))) +
+ theme_classic () +
+ theme (axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 14),
+        legend.position = "none", 
+        axis.title = element_blank(), 
+        axis.ticks.y = element_blank(),
+        axis.text.y =  element_text(size= 14),
+        axis.line.y = element_blank(), 
+        plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+ geom_tile (aes (fill = value), colour = "black") + # add boarders around heatmap
+ geom_text (aes (label = scales::percent(value, accuracy = 1))) +
+ scale_x_discrete(position = "top")+
+ scale_fill_gradient(high = "#d7301f", low = "#fff7ec") +
+ coord_flip()
+
+print(heatmapStudy)
+```
+
+# Logistic regression model both studies, Swabsite == OTS only
+```{r}
+metadata_pulmoOTSBoth$Study[metadata_pulmoOTSBoth$Study == "Bussolton"] <- 0
+metadata_pulmoOTSBoth$Study[metadata_pulmoOTSBoth$Study == "Celtic fire"] <- 1
+metadata_pulmoOTSBoth$pulmotype[metadata_pulmoOTSBoth$pulmotype == "Community\nType 1"] <- 0
+metadata_pulmoOTSBoth$pulmotype[metadata_pulmoOTSBoth$pulmotype == "Community\nType 2"] <- 1
+metadata_pulmoOTSBoth$pulmotype <- as.factor(metadata_pulmoOTSBoth$pulmotype)
+metadata_pulmoOTSBoth$Study <- as.factor(metadata_pulmoOTSBoth$Study)
+metadata_pulmoOTSBoth$Donor <- as.factor(metadata_pulmoOTSBoth$Donor)
+
+# Fit the logistic regression models
+model1 <- glm(pulmotype ~ Disease + Study + age + sex , data = metadata_pulmoOTSBoth, family = binomial)
+model2 <- glm(pulmotype ~ Disease + age + sex, data = metadata_pulmoOTSBoth, family = binomial)
+
+model_coef1 <- as.data.frame(summary(model1)$coefficients)
+model_coef2 <- as.data.frame(summary(model2)$coefficients)
+# Combine the coefficients and standard errors into a single data frame
+
+model_coef1study <- model_coef1 %>% 
+ mutate(odds_ratio = exp(Estimate),
+        lower_ci = exp(Estimate - 1.96 * `Std. Error`),
+        upper_ci = exp(Estimate + 1.96 * `Std. Error`)) %>% 
+ filter(row.names(.) != "(Intercept)")
+
+model_coef2study <- model_coef2 %>% 
+ mutate(odds_ratio = exp(Estimate),
+        lower_ci = exp(Estimate - 1.96 * `Std. Error`),
+        upper_ci = exp(Estimate + 1.96 * `Std. Error`)) %>% 
+ filter(row.names(.) != "(Intercept)")
+
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+In this case, the p-value higher than 0.05, which indicates that the addition of the study variable does not improves the fit of the model. 
+
+# Test for the effect of sex in the above created model
+```{r}
+model1 <- glm(pulmotype ~ Disease + Study + age + sex, data = metadata_pulmoOTSBoth, family = binomial)
+model2 <- glm(pulmotype ~ Disease + Study + age, data = metadata_pulmoOTSBoth, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+not significant for sex 
+
+# Test for the effect of age in the above created model 
+```{r}
+model1 <- glm(pulmotype ~ Disease + Study + age + sex, data = metadata_pulmoOTSBoth, family = binomial)
+model2 <- glm(pulmotype ~ Disease + Study + sex, data = metadata_pulmoOTSBoth, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+no effect of age
+
+## Celtic fire samples only looking into swabsite, here we have to account for Donor as random variable  
+```{r}
+metadata_Celtic <- read.table(file = "../20201117_Enterotyping/helper.glmer.celtic.revision.csv", sep = ",", header = T, row.names = 1)
+
+metadata_Celtic$pulmotype[metadata_Celtic$pulmotype == "airway_community_1"] <- "Community\nType 1"
+metadata_Celtic$pulmotype[metadata_Celtic$pulmotype == "airway_community_2"] <- "Community\nType 2"
+metadata_Celtic <- metadata_Celtic %>%
+ filter(!SwabSite == "Lingula")
+
+aFrame_1 <- reshape2::melt(t(apply(table (as.factor(metadata_Celtic$SwabSite), as.factor(metadata_Celtic$pulmotype)),
+                                   1, function(x) x/sum(x))))
+heatmapSwab <- ggplot (aFrame_1, aes (x = as.factor(Var1), y = as.factor(Var2))) +
+ theme_classic () +
+ theme (axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 14),
+        legend.position = "none", 
+        axis.title = element_blank(), 
+        axis.ticks.y = element_blank(),
+        axis.text.y =  element_text(size= 14),
+        axis.line.y = element_blank(), 
+        plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+ geom_tile (aes (fill = value), colour = "black") + # add boarders around heatmap
+ geom_text (aes (label = scales::percent(value, accuracy = 1))) +
+ scale_x_discrete(position = "top")+
+ scale_fill_gradient(high = "#d7301f", low = "#fff7ec") +
+ coord_flip()
+
+print(heatmapSwab)
+```
+
+# Logistic regression model Celticfire only looking into the effect of Swabsite
+```{r}
+#load data
+metadata <- read.table("~/Dropbox/lung/ThedaTill/data/clean_metadata_20201021.csv",
+                       sep = "\t",
+                       header = TRUE, row.names = 1, stringsAsFactors = F)
+metadata <- metadata[order(rownames(metadata)), ]
+metadata$Study[metadata$Study == "Busselton"] <- 0
+metadata$Study[metadata$Study != 0] <- 1
+#reduce the dataset 
+metadata_reduced <- metadata[, c("Study", "Disease", "SwabSite", "CurrentSmoker", "sex", "BMI", "age", "Donor")]
+
+metadata_reduced$Disease[metadata_reduced$Disease == "Healthy"] <- "Control"
+for (i in unique(metadata_reduced$Disease)) {
+ binaryDummy <- rep(0, length(metadata_reduced$Disease))
+ binaryDummy[metadata_reduced$Disease == i] <- 1
+ metadata_reduced[[i]] <- binaryDummy
+ colnames(metadata_reduced)[ncol(metadata_reduced)] <- i
+}
+metadata_reduced$Disease <- NULL
+metadata_reduced$sex[metadata_reduced$sex == "male"] <- 0
+metadata_reduced$sex[metadata_reduced$sex != 0] <- 1
+
+#remove everything that is a control or standard 
+metadata_reduced$SwabSite <- sub("\\s+16S", "", metadata_reduced$SwabSite)
+metadata_reduced$SwabSite <- sub("\\s+", "_", metadata_reduced$SwabSite)
+metadata_reduced <-
+ metadata_reduced[-c(which(metadata_reduced$SwabSite == "Scope_control_wash")),]
+
+metadata_reduced$CurrentSmoker[metadata_reduced$CurrentSmoker == "No"] <- 0
+metadata_reduced$CurrentSmoker[metadata_reduced$CurrentSmoker != 0] <- 1
+
+#metadata_reduced$Donor <- NULL
+metadata_reduced$Study <- as.integer(metadata_reduced$Study)
+metadata_reduced$sex <- as.integer(metadata_reduced$sex)
+metadata_reduced$CurrentSmoker <- as.integer(metadata_reduced$CurrentSmoker)
+
+metadata_reduced <- metadata_reduced[order(rownames(metadata_reduced)), ]
+metadata_reduced$Control <- NULL
+
+pulmo <- read.table("~/Dropbox/lung/ThedaTill/output/pulmotype_result_assignment_RTK.txt", sep = "\t", header = T, row.names = 1)
+pulmo <- pulmo[,c(6:7)]
+
+```
+# Swabsite loop for Celtic fire only
+```{r}
+meta <- merge(metadata, pulmo, by = 0)
+row.names(meta) <- meta$Row.names
+meta$Row.names <- NULL
+
+meta$pulmotype[meta$pulmotype == "airway_community_1"] <- 0
+meta$pulmotype[meta$pulmotype == "airway_community_2"] <- 1
+
+meta$pulmotype <- as.factor(meta$pulmotype)
+meta$Study <- as.factor(meta$Study)
+meta$Donor <- as.factor(meta$Donor)
+
+meta <- meta %>%
+ filter(!Disease == "GERD")
+meta <- meta %>%
+ filter(!Disease == "Diabetes")
+meta$Disease[meta$Disease == "Healthy"] <- "Control"
+
+meta$Disease[meta$Disease == "Asthma"] <- 1
+meta$Disease[meta$Disease == "Control"] <- 0
+
+# Study = 1 is Celticfire
+meta <- meta %>%
+ filter(!Study== "0")
+# Brushing Lingula 16S needs to be removed, to less samples
+meta <- meta %>%
+ filter(!SwabSite== "Brushing Lingula 16S")
+
+for (i in unique(meta$SwabSite)) {
+ # Fit the logistic regression models
+ print(i)
+ model1 <-
+  glmer(
+   pulmotype ~ age + sex + (1 |
+                             Donor) + Disease + SwabSite ,
+   data = subset(meta, SwabSite != i),
+   family = binomial
+  )
+ 
+ model2 <-
+  glmer(
+   pulmotype ~ age + sex + (1 |
+                             Donor) + Disease ,
+   data = subset(meta, SwabSite != i),
+   family = binomial
+  )
+ 
+ # Perform the likelihood ratio test
+ lrtest <- lmtest::lrtest(model1, model2)
+ # Print the results
+ print(lrtest)
+}
+#  3.088e-07 *** for OTS vs LLL
+#  4.977e-10 *** for OTS vs LUL
+#  0.6265 for LLL vs. LUL
+
+p.adjust(c(3.088e-07,  4.977e-10, 0.6265 ), method = "fdr")
+# 4.6320e-07 1.4931e-09 6.2650e-01
+```
+
+# Now, we test each Swabsite individual to check for the effect of sex and age
+## OTS only
+```{r}
+meta <- merge(metadata, pulmo, by = 0)
+row.names(meta) <- meta$Row.names
+meta$Row.names <- NULL
+
+meta$pulmotype[meta$pulmotype == "airway_community_1"] <- 0
+meta$pulmotype[meta$pulmotype == "airway_community_2"] <- 1
+
+meta$pulmotype <- as.factor(meta$pulmotype)
+meta$Study <- as.factor(meta$Study)
+meta$Donor <- as.factor(meta$Donor)
+
+meta <- meta %>%
+ filter(!Disease == "GERD")
+meta <- meta %>%
+ filter(!Disease == "Diabetes")
+meta$Disease[meta$Disease == "Healthy"] <- "Control"
+
+meta$Disease[meta$Disease == "Asthma"] <- 1
+meta$Disease[meta$Disease == "Control"] <- 0
+
+# Study = 1 is Celticfire
+meta <- meta %>%
+ filter(!Study== "0")
+
+meta <- meta %>%
+ filter(!SwabSite== "Brushing Lingula 16S")
+
+
+#get help by using dummy variables
+for (i in unique(meta$SwabSite)) {
+ binaryDummy <- rep(0, length(meta$SwabSite))
+ binaryDummy[meta$SwabSite == i] <- 1
+ meta[[i]] <- binaryDummy
+ colnames(meta)[ncol(meta)] <- i
+}
+meta$SwabSite <- NULL
+meta$OTS <- as.factor(meta$OTS)
+
+# Fit the logistic regression models
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + OTS , data = meta, family = binomial)
+
+model2 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+which indicates that the addition of the OTS variable significantly improves the fit of the model. The *** next to the p-value indicates that the result is highly significant.
+
+## Sex effect when only OTS samples are tested 
+```{r}
+# Fit the logistic regression models
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + OTS , data = meta, family = binomial)
+model2 <- glmer(pulmotype ~ age + (1 | Donor) + Disease+ OTS , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+sex also nope 0.5944
+## Age effect when only OTS samples are tested 
+```{r}
+# Fit the logistic regression models
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + OTS , data = meta, family = binomial)
+model2 <- glmer(pulmotype ~ sex + (1 | Donor) + Disease+ OTS , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+age no effect 0.9824
+
+## LLL only
+```{r}
+meta$`Brushing LLL 16S` <- as.factor(meta$`Brushing LLL 16S`)
+
+# Fit the logistic regression models
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + `Brushing LLL 16S` , data = meta, family = binomial)
+
+model2 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+which indicates that the addition of the `Brushing LLL 16S` variable significantly improves the fit of the model. The *** next to the p-value indicates that the result is highly significant.
+
+## Sex effect when only LLL samples are tested 
+```{r}
+# Fit the logistic regression models
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + `Brushing LLL 16S` , data = meta, family = binomial)
+model2 <- glmer(pulmotype ~ age + (1 | Donor) + Disease+ `Brushing LLL 16S` , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+ sex has no effect 0.6278
+
+## Age effect when only LUL samples are tested 
+```{r}
+# Fit the logistic regression models
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + `Brushing LLL 16S` , data = meta, family = binomial)
+model2 <- glmer(pulmotype ~ sex + (1 | Donor) + Disease+ `Brushing LLL 16S` , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+age has no effect 0.9297
+
+
+## LUL only
+```{r}
+meta$`Brushing LUL 16S` <- as.factor(meta$`Brushing LUL 16S`)
+
+# Fit the logistic regression models
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + `Brushing LUL 16S` , data = meta, family = binomial)
+
+model2 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+which indicates that the addition of the `Brushing LUL 16S` variable significantly improves the fit of the model. The *** next to the p-value indicates that the result is highly significant.
+
+## Sex effect when only LUL samples are tested 
+```{r}
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + `Brushing LUL 16S` , data = meta, family = binomial)
+model2 <- glmer(pulmotype ~ age + (1 | Donor) + Disease+ `Brushing LUL 16S` , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+
+sex has no effect 0.5518
+## Age effect when only LUL samples are tested 
+```{r}
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + `Brushing LUL 16S` , data = meta, family = binomial)
+model2 <- glmer(pulmotype ~ sex + (1 | Donor) + Disease+ `Brushing LUL 16S` , data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+age has no effect 0.8771
+
+# Test for Asthma only in the Celticfire dataset w/o Lingula
+```{r}
+meta <- merge(metadata, pulmo, by = 0)
+row.names(meta) <- meta$Row.names
+meta$Row.names <- NULL
+
+meta$pulmotype[meta$pulmotype == "airway_community_1"] <- "Community\nType 1"
+meta$pulmotype[meta$pulmotype == "airway_community_2"] <- "Community\nType 2"
+
+meta$pulmotype <- as.factor(meta$pulmotype)
+meta$Study <- as.factor(meta$Study)
+meta$Donor <- as.factor(meta$Donor)
+
+meta <- meta %>%
+ filter(!Disease == "GERD")
+meta <- meta %>%
+ filter(!Disease == "Diabetes")
+meta$Disease[meta$Disease == "Healthy"] <- "Control"
+
+# Study = 1 is Celticfire
+meta <- meta %>%
+ filter(!Study== "0")
+
+
+aFrame_1 <- reshape2::melt(t(apply(table (as.factor(meta$Disease), as.factor(meta$pulmotype)),
+                                   1, function(x) x/sum(x))))
+heatmapAsthma <- ggplot (aFrame_1, aes (x = as.factor(Var1), y = as.factor(Var2))) +
+ theme_classic () +
+ theme (axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 14),
+        legend.position = "none", 
+        axis.title = element_blank(), 
+        axis.ticks.y = element_blank(),
+        axis.text.y =  element_text(size= 14),
+        axis.line.y = element_blank(), 
+        plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+ geom_tile (aes (fill = value), colour = "black") + # add boarders around heatmap
+ geom_text (aes (label = scales::percent(value, accuracy = 1))) +
+ scale_x_discrete(position = "top")+
+ scale_fill_gradient(high = "#d7301f", low = "#fff7ec") +
+ coord_flip()
+
+print(heatmapAsthma)
+```
+
+## modelling the effect of Asthma 
+```{r}
+# write.table(diff, file = "../20201117_Enterotyping/helper.difference.fasley-excluded.cvs", sep = ",", quote =F)
+
+
+meta <- merge(metadata, pulmo, by = 0)
+row.names(meta) <- meta$Row.names
+meta$Row.names <- NULL
+
+meta$pulmotype[meta$pulmotype == "airway_community_1"] <- 0
+meta$pulmotype[meta$pulmotype == "airway_community_2"] <- 1
+
+meta$pulmotype <- as.factor(meta$pulmotype)
+meta$Study <- as.factor(meta$Study)
+meta$Donor <- as.factor(meta$Donor)
+
+meta <- meta %>%
+ filter(!Disease == "GERD")
+meta <- meta %>%
+ filter(!Disease == "Diabetes")
+meta$Disease[meta$Disease == "Healthy"] <- "Control"
+
+meta$Disease[meta$Disease == "Asthma"] <- 1
+meta$Disease[meta$Disease == "Control"] <- 0
+
+# Study = 1 is Celticfire
+meta <- meta %>%
+ filter(!Study== "0")
+
+meta <- meta %>%
+ filter(!SwabSite== "Brushing Lingula 16S")
+
+
+# Fit the logistic regression models
+model1 <- glmer(pulmotype ~ age + sex + (1 | Donor) + Disease + SwabSite, data = meta, family = binomial)
+
+model2 <- glmer(pulmotype ~ age + sex + (1 | Donor) + SwabSite, data = meta, family = binomial)
+
+# Perform the likelihood ratio test
+lrtest <- lmtest::lrtest(model1, model2)
+# Print the results
+lrtest
+```
+Asthma has no effect   0.08974 .
+
+```{r}
+plot <- cowplot::plot_grid(heatmapAsthma, heatmapSwab, heatmapStudy, align = "hv", rel_heights = (c(1,1)), ncol = 1)
+plot
+ggsave(plot, filename = "~/Dropbox/lung/ThedaTill/output/Updated_Figure/20210527_heatmapCombined_Donor_SwabSite_Pulmo_new.svg", device = "svg", width = 2.5, height = 6.5)
+```
